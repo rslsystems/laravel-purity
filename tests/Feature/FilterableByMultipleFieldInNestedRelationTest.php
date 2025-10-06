@@ -2,8 +2,8 @@
 
 namespace Abbasudo\Purity\Tests\Feature;
 
-use Abbasudo\Purity\Tests\App\Models\Post;
 use Abbasudo\Purity\Tests\App\Models\User;
+use Abbasudo\Purity\Tests\App\Models\Post;
 use Abbasudo\Purity\Tests\TestCase;
 
 use function PHPUnit\Framework\assertEquals;
@@ -17,12 +17,11 @@ class FilterableByMultipleFieldInNestedRelationTest extends TestCase
         $user = User::create([
             'name' => 'Alice',
         ]);
-
         Post::create([
             'user_id' => $user->id,
-            'title'   => 'title',
+            'title' => 'title',
         ])->comments()->create([
-            'content'     => 'comment',
+            'content' => 'comment',
             'is_approved' => true,
         ]);
     }
@@ -49,6 +48,30 @@ class FilterableByMultipleFieldInNestedRelationTest extends TestCase
         ];
 
         $results = User::with(['post.comments'])
+            ->filter($filters)
+            ->get();
+
+        assertEquals(1, $results->count());
+
+        $this->app['config']->set('purity.silent', $originalSilentMode);
+    }
+
+    /** @test */
+    public function it_can_filter_by_multiple_fields_in_nested_relation_with_renamed_fields(): void
+    {
+        $originalSilentMode = $this->app['config']->get('purity.silent');
+        $this->app['config']->set('purity.silent', false);
+
+        $filters = [
+            'approved' => [
+                '$eq' => true,
+            ],
+        ];
+
+        $results = User::with(['post.comments'])
+            ->renamedFilterFields([
+                'post.comments.is_approved' => 'approved',
+            ])
             ->filter($filters)
             ->get();
 

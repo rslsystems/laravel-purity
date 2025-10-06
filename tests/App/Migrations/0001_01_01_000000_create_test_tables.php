@@ -54,6 +54,7 @@ return new class() extends Migration {
             $table->id();
             $table->foreignIdFor(Post::class)->nullable();
             $table->string('content');
+            // $table->boolean('is_approved')->default(false);
             $table->timestamps();
         });
 

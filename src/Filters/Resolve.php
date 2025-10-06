@@ -12,12 +12,19 @@ use Illuminate\Database\Eloquent\Model;
 
 class Resolve
 {
-    /**
+        /**
      * List of relations and the column.
      *
      * @var array
      */
     private array $fields = [];
+
+    /**
+     * Column to apply at the deepest relation level.
+     *
+     * @var string|null
+     */
+    private ?string $currentColumn = null;
 
     /**
      * List of available filters.
@@ -46,6 +53,7 @@ class Resolve
      * @param array|string $values
      *
      * @throws Exception
+     * @throws Exception
      *
      * @return void
      */
@@ -63,6 +71,7 @@ class Resolve
      *
      * @param Closure $closure
      *
+     * @throws Exception
      * @throws Exception
      *
      * @return bool
@@ -106,6 +115,7 @@ class Resolve
      * @param array|string|null $filters
      *
      * @throws Exception
+     * @throws Exception
      *
      * @return void
      */
@@ -120,27 +130,40 @@ class Resolve
         }
 
         $firstKey = array_key_first($filters);
-        if ($firstKey !== null && $this->filterList->get($firstKey) !== null) {
-            $path = $this->fields;
+		if ($firstKey !== null && $this->filterList->get($firstKey) !== null) {
+			$path = $this->fields;
 
             foreach ($filters as $operator => $opFilters) {
                 if (!$this->safe(fn () => $this->validateOperator($field, $operator))) {
                     continue;
                 }
 
-                $this->fields = array_merge($path, [$this->model->getField($field)]);
+                $real = $this->model->getField($field);
+                $this->currentColumn = null;
+
+                if (str_contains($real, '.')) {
+                    $parts = explode('.', $real);
+                    $column = array_pop($parts);
+                    $this->currentColumn = $column;
+                    $this->fields = array_merge($path, $parts);
+                } else {
+                    $this->fields = array_merge($path, []);
+                    $this->currentColumn = $real;
+                }
 
                 $this->safe(fn () => $this->applyFilterStrategy(
                     $query,
                     $operator,
                     is_array($opFilters) ? $opFilters : [$opFilters]
                 ));
+
+                // reset for next operator
+                $this->currentColumn = null;
             }
 
-            $this->fields = $path;
-
-            return;
-        }
+			$this->fields = $path;
+			return;
+		}
 
         $this->safe(fn () => $this->applyRelationFilter($query, $field, $filters));
     }
@@ -156,7 +179,7 @@ class Resolve
     {
         $filter = $this->filterList->get($operator);
 
-        $field = end($this->fields);
+        $field = $this->currentColumn ?? end($this->fields);
 
         $callback = (new $filter($query, $field, $filters))->apply();
 
@@ -171,7 +194,12 @@ class Resolve
      */
     private function filterRelations(Builder $query, Closure $callback): void
     {
-        array_pop($this->fields);
+        // Only pop when the last element is actually the column (legacy path).
+        if (!is_null($this->currentColumn)) {
+            // column is not inside $fields, skip popping
+        } else {
+            array_pop($this->fields);
+        }
 
         $this->applyRelations($query, $callback);
     }
@@ -217,6 +245,8 @@ class Resolve
     private function applyRelationFilter(Builder $query, string $field, array $filters): void
     {
         $this->validateField($field);
+
+
         $this->fields[] = $this->model->getField($field);
         $this->prepareModelForRelation();
 
