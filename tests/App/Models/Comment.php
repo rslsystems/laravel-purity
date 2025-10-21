@@ -17,4 +17,8 @@ class Comment extends Model
         'content',
         'is_approved',
     ];
+
+    protected $renamedFilterFields = [
+        'is_approved' => 'approved',
+    ];
 }

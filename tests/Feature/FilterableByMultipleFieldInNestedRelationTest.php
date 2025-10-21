@@ -40,7 +40,7 @@ class FilterableByMultipleFieldInNestedRelationTest extends TestCase
                             'comment',
                         ],
                     ],
-                    'is_approved' => [
+                    'approved' => [
                         '$eq' => true,
                     ],
                 ],
@@ -63,15 +63,16 @@ class FilterableByMultipleFieldInNestedRelationTest extends TestCase
         $this->app['config']->set('purity.silent', false);
 
         $filters = [
-            'approved' => [
-                '$eq' => true,
+            'post' => [
+                'comments' => [
+                    'approved' => [
+                        '$eq' => true,
+                    ],
+                ],
             ],
         ];
 
         $results = User::with(['post.comments'])
-            ->renamedFilterFields([
-                'post.comments.is_approved' => 'approved',
-            ])
             ->filter($filters)
             ->get();
 

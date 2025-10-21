@@ -12,24 +12,18 @@ use Illuminate\Database\Eloquent\Model;
 
 class Resolve
 {
-        /**
+    /**
      * List of relations and the column.
-     *
-     * @var array
      */
     private array $fields = [];
 
     /**
      * Column to apply at the deepest relation level.
-     *
-     * @var string|null
      */
     private ?string $currentColumn = null;
 
     /**
      * List of available filters.
-     *
-     * @var filterList
      */
     private FilterList $filterList;
 
@@ -37,10 +31,6 @@ class Resolve
 
     private array $previousModels = [];
 
-    /**
-     * @param FilterList $filterList
-     * @param Model      $model
-     */
     public function __construct(FilterList $filterList, Model $model)
     {
         $this->filterList = $filterList;
@@ -48,18 +38,12 @@ class Resolve
     }
 
     /**
-     * @param Builder      $query
-     * @param string       $field
-     * @param array|string $values
-     *
      * @throws Exception
      * @throws Exception
-     *
-     * @return void
      */
     public function apply(Builder $query, string $field, array|string $values): void
     {
-        if (!$this->safe(fn () => $this->validate([$field => $values]))) {
+        if (! $this->safe(fn () => $this->validate([$field => $values]))) {
             return;
         }
 
@@ -69,12 +53,9 @@ class Resolve
     /**
      * run functions with or without exception.
      *
-     * @param Closure $closure
      *
      * @throws Exception
      * @throws Exception
-     *
-     * @return bool
      */
     private function safe(Closure $closure): bool
     {
@@ -92,8 +73,6 @@ class Resolve
     }
 
     /**
-     * @param array|string $values
-     *
      * @return void
      */
     private function validate(array|string $values = [])
@@ -102,7 +81,7 @@ class Resolve
             throw NoOperatorMatch::create($this->filterList->keys());
         }
 
-        if (!in_array(key($values), $this->filterList->keys())) {
+        if (! in_array(key($values), $this->filterList->keys())) {
             $this->validate(array_values($values)[0]);
         }
     }
@@ -110,14 +89,9 @@ class Resolve
     /**
      * Apply a single filter to the query builder instance.
      *
-     * @param Builder           $query
-     * @param string            $field
-     * @param array|string|null $filters
      *
      * @throws Exception
      * @throws Exception
-     *
-     * @return void
      */
     private function filter(Builder $query, string $field, array|string|null $filters): void
     {
@@ -130,18 +104,21 @@ class Resolve
         }
 
         $firstKey = array_key_first($filters);
-		if ($firstKey !== null && $this->filterList->get($firstKey) !== null) {
-			$path = $this->fields;
+        if ($firstKey !== null && $this->filterList->get($firstKey) !== null) {
+            $path = $this->fields;
 
             foreach ($filters as $operator => $opFilters) {
-                if (!$this->safe(fn () => $this->validateOperator($field, $operator))) {
+                if (! $this->safe(fn () => $this->validateOperator($field, $operator))) {
                     continue;
                 }
 
                 $real = $this->model->getField($field);
                 $this->currentColumn = null;
 
-                if (str_contains($real, '.')) {
+                if ($this->model?->userDefinedFilterFields && isset($this->model?->userDefinedFilterFields[$real])) {
+                    $this->fields[] = $real;
+                    $this->currentColumn = $real;
+                } elseif (str_contains($real, '.')) {
                     $parts = explode('.', $real);
                     $column = array_pop($parts);
                     $this->currentColumn = $column;
@@ -161,20 +138,14 @@ class Resolve
                 $this->currentColumn = null;
             }
 
-			$this->fields = $path;
-			return;
-		}
+            $this->fields = $path;
+
+            return;
+        }
 
         $this->safe(fn () => $this->applyRelationFilter($query, $field, $filters));
     }
 
-    /**
-     * @param Builder $query
-     * @param string  $operator
-     * @param array   $filters
-     *
-     * @return void
-     */
     private function applyFilterStrategy(Builder $query, string $operator, array $filters): void
     {
         $filter = $this->filterList->get($operator);
@@ -186,16 +157,10 @@ class Resolve
         $this->filterRelations($query, $callback);
     }
 
-    /**
-     * @param Builder $query
-     * @param Closure $callback
-     *
-     * @return void
-     */
     private function filterRelations(Builder $query, Closure $callback): void
     {
         // Only pop when the last element is actually the column (legacy path).
-        if (!is_null($this->currentColumn)) {
+        if (! is_null($this->currentColumn) && $this->checkModelRelationshipsForColumn($this->model, $this->fields)) {
             // column is not inside $fields, skip popping
         } else {
             array_pop($this->fields);
@@ -204,13 +169,21 @@ class Resolve
         $this->applyRelations($query, $callback);
     }
 
+    private function checkModelRelationshipsForColumn(Model $model, array $fields): bool
+    {
+        $field = $fields[array_key_last($fields)] ?? null;
+
+        if ($field === null) {
+            return false;
+        }
+
+        $columns = $model->userDefinedFilterFields ?? $model->columns;
+
+        return in_array($field, $columns) || in_array($this->currentColumn, $columns);
+    }
+
     /**
      * Resolve nested relations if any.
-     *
-     * @param Builder $query
-     * @param Closure $callback
-     *
-     * @return void
      */
     private function applyRelations(Builder $query, Closure $callback): void
     {
@@ -222,9 +195,6 @@ class Resolve
     }
 
     /**
-     * @param Builder $query
-     * @param Closure $callback
-     *
      * @return void
      */
     private function relation(Builder $query, Closure $callback)
@@ -234,18 +204,11 @@ class Resolve
     }
 
     /**
-     * @param Builder $query
-     * @param string  $field
-     * @param array   $filters
-     *
      * @throws Exception
-     *
-     * @return void
      */
     private function applyRelationFilter(Builder $query, string $field, array $filters): void
     {
         $this->validateField($field);
-
 
         $this->fields[] = $this->model->getField($field);
         $this->prepareModelForRelation();
@@ -257,9 +220,6 @@ class Resolve
         $this->restorePreviousModel();
     }
 
-    /**
-     * @return void
-     */
     private function prepareModelForRelation(): void
     {
         $relation = end($this->fields);
@@ -269,42 +229,28 @@ class Resolve
         }
     }
 
-    /**
-     * @return void
-     */
     private function restorePreviousModel(): void
     {
         array_pop($this->fields);
-        if (!empty($this->previousModels)) {
+        if (! empty($this->previousModels)) {
             $this->model = array_pop($this->previousModels);
         }
     }
 
-    /**
-     * @param string $field
-     *
-     * @return void
-     */
     private function validateField(string $field): void
     {
         $availableFields = $this->model->availableFields();
 
-        if (!in_array($field, $availableFields)) {
+        if (! in_array($field, $availableFields)) {
             throw FieldNotSupported::create($field, $this->model::class, $availableFields);
         }
     }
 
-    /**
-     * @param string $field
-     * @param string $operator
-     *
-     * @return void
-     */
     private function validateOperator(string $field, string $operator): void
     {
         $availableFilters = $this->model->getAvailableFiltersFor($field);
 
-        if (!$availableFilters || in_array($operator, $availableFilters)) {
+        if (! $availableFilters || in_array($operator, $availableFilters)) {
             return;
         }
 
